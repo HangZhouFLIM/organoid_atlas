@@ -4,7 +4,8 @@ function crypt_to_villus_gradients_combined
 %   MeanTauModulation into one pipeline. Users select CSV files containing
 %   per-cell measurements and define the crypt base and villus tip cells.
 %   The function computes normalized positions along the crypt->villus axis
-%   and generates summaries and plots for each metric.
+%   and generates summaries and plots (pooled mean ± SEM, combined single-cell
+%   heatmap and bin-averaged heatmap) for each metric.
 %
 %   Output structure:
 %     ./output/<Metric>/ ... files and figures for each metric.
@@ -90,7 +91,6 @@ for m = 1:numel(metrics)
 
     allRows = table();
     perSampleSummary = table();
-    sampleInfo = struct();
 
     for k = 1:numFiles
         T = tables{k};
@@ -102,9 +102,6 @@ for m = 1:numel(metrics)
         perSampleSummary = [perSampleSummary; S]; %#ok<AGROW>
 
         [~,ord] = sort(T.Proj01);
-        sampleInfo(k).sampleName = sampleName; %#ok<SAGROW>
-        sampleInfo(k).Proj01 = T.Proj01(ord);
-        sampleInfo(k).values = T.(metric.field)(ord);
 
         sampleTableOrdered = table(T.Id(ord), T.Proj01(ord), T.(metric.field)(ord), ...
             'VariableNames', {'Id','Proj01', metric.field});
@@ -117,8 +114,6 @@ for m = 1:numel(metrics)
     overall = summarizeBins(allRows, binCenters, pctList, metric.field);
     writetable(overall, fullfile(subOut,'bin_summary_overall.csv'));
 
-    boxLong = allRows(:, {'Bin','Sample','Id', metric.field});
-    writetable(boxLong, fullfile(subOut,'boxplot_long_per_bin.csv'));
 
     [~, ordAll] = sort(allRows.Proj01);
     heat_all = table(allRows.Sample(ordAll), allRows.Id(ordAll), allRows.Proj01(ordAll), allRows.(metric.field)(ordAll), ...
@@ -131,7 +126,7 @@ for m = 1:numel(metrics)
     lowessT = table(lowessX, smY, 'VariableNames', {'BinCenter','SmoothedMedian'});
     writetable(lowessT, fullfile(subOut,'lowess_smoothed.csv'));
 
-    makePlotsAndHeatmaps(allRows, overall, sampleInfo, numBins, subOut, metric.field, metric.label);
+    makePlotsAndHeatmaps(allRows, overall, numBins, subOut, metric.field, metric.label);
 end
 end
 
@@ -199,7 +194,7 @@ function S = summarizeBins(T, binCenters, pctList, fieldName)
 end
 
 %% --------------------- PLOTTING ---------------------
-function makePlotsAndHeatmaps(allRows, overall, sampleInfo, numBins, outFolder, fieldName, fieldLabel)
+function makePlotsAndHeatmaps(allRows, overall, numBins, outFolder, fieldName, fieldLabel)
     [~,ordAll]=sort(allRows.Proj01); valsAll=allRows.(fieldName)(ordAll);
     clim = prctile(valsAll,[5 95]);
 
@@ -228,66 +223,18 @@ function makePlotsAndHeatmaps(allRows, overall, sampleInfo, numBins, outFolder, 
     prismAxes(ax2,true);
     export600(f2, fullfile(outFolder,'fig_heatmap_allcells.png'));
 
-    %% 3) Per-sample panel heatmap
-    ns = numel(sampleInfo);
-    f3 = figure('Color','w','Position',[200 200 1200, max(300, 160+130*ns)]); styleDefaults(f3);
-    for i=1:ns
-        ax = subplot(ns,1,i,'Parent',f3);
-        prismAxes(ax,true);
-        vals_i = sampleInfo(i).values;
-        if isempty(vals_i)
-            imagesc(ax, [0 1],[0 1], zeros(10,1));
-        else
-            imagesc(ax, [0 1],[0 1], repmat(vals_i.',20,1));
-        end
-        set(ax,'YTick',[],'YColor','none');
-        title(ax, sampleInfo(i).sampleName, 'Interpreter','none','FontWeight','bold');
-        colormap(ax,parula); caxis(ax,clim);
-        if i==ns
-            xlabel(ax,'Normalized position (within sample)','FontWeight','bold');
-        else
-            set(ax,'XTickLabel',[]);
-        end
-    end
-    try
-        sgtitle(f3,'Per-sample single-cell heatmaps','FontWeight','bold');
-    catch
-    end
-    export600(f3, fullfile(outFolder,'fig_heatmap_per_sample_panel.png'));
-
-    %% 4) Bin-averaged intensity heatmap
-    f4 = figure('Color','w','Position',[200 200 1200 320]); styleDefaults(f4);
-    ax4 = axes('Parent',f4); prismAxes(ax4,true); hold(ax4,'on');
+    %% 3) Bin-averaged intensity heatmap
+    f3 = figure('Color','w','Position',[200 200 1200 320]); styleDefaults(f3);
+    ax3 = axes('Parent',f3); prismAxes(ax3,true); hold(ax3,'on');
     binMeans = overall.Mean(:)';
     H2 = repmat(binMeans,20,1);
-    imagesc(ax4, [0 1],[0 1], H2);
-    xlabel(ax4,'Normalized position (bin centers)','FontWeight','bold');
-    set(ax4,'YTick',[],'YColor','none');
-    title(ax4,['Bin-averaged ' fieldLabel ' heatmap'],'FontWeight','bold');
-    c = colorbar(ax4); ylabel(c,fieldLabel,'FontWeight','bold');
-    caxis(ax4,clim); colormap(ax4,parula);
-    export600(f4, fullfile(outFolder,'fig_heatmap_bin_means.png'));
-
-    %% 5) Boxplot per bin
-    f5 = figure('Color','w','Position',[200 200 1400 520]); styleDefaults(f5);
-    ax5 = axes('Parent',f5); hold(ax5,'on'); box(ax5,'off');
-    valid = ~isnan(allRows.Bin) & allRows.Bin > 0;
-    boxplot(ax5, allRows.(fieldName)(valid), allRows.Bin(valid), ...
-        'PlotStyle','compact', 'Labels',[]);
-    set(findobj(ax5,'Tag','Box'),'LineWidth',1.2);
-    set(findobj(ax5,'Tag','Median'),'LineWidth',1.2);
-    set(findobj(ax5,'Tag','Whisker'),'LineWidth',1.2);
-    set(findobj(ax5,'Tag','Outliers'),'MarkerSize',3);
-
-    edges = linspace(0,1,numBins+1);
-    xticksLoc = round(linspace(1,numBins,11));
-    xticks(ax5, xticksLoc);
-    xticklabels(ax5, arrayfun(@(x)sprintf('%.2f',edges(x)), xticksLoc,'UniformOutput',false));
-    xlabel(ax5,'Normalized position (bin index/edges)','FontWeight','bold');
-    ylabel(ax5,fieldLabel,'FontWeight','bold');
-    title(ax5,['Per-bin ' fieldLabel ' distributions'],'FontWeight','bold');
-    prismAxes(ax5);
-    export600(f5, fullfile(outFolder,'fig_boxplots_per_bin.png'));
+    imagesc(ax3, [0 1],[0 1], H2);
+    xlabel(ax3,'Normalized position (bin centers)','FontWeight','bold');
+    set(ax3,'YTick',[],'YColor','none');
+    title(ax3,['Bin-averaged ' fieldLabel ' heatmap'],'FontWeight','bold');
+    c = colorbar(ax3); ylabel(c,fieldLabel,'FontWeight','bold');
+    caxis(ax3,clim); colormap(ax3,parula);
+    export600(f3, fullfile(outFolder,'fig_heatmap_bin_means.png'));
 end
 
 %% --------------------- STYLING HELPERS ---------------------
