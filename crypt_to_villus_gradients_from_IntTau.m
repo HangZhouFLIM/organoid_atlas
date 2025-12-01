@@ -13,8 +13,9 @@ function crypt_to_villus_gradients_from_IntTau
 %   This function relies only on base MATLAB (R2021b+).
 
 %% --------------------- USER SETTINGS ---------------------
-numBins   = 50;         % number of bins between crypt (0) and villus (1)
-outFolder = './output_IntTau';
+numBins    = 50;         % number of bins between crypt (0) and villus (1)
+outFolder  = './output_IntTau';
+smoothSpan = 0.12;       % fraction of bins used for smoothing plotted curves
 
 if ~exist(outFolder,'dir'), mkdir(outFolder); end
 
@@ -93,8 +94,11 @@ set(fFig,'DefaultAxesFontName','Arial', ...
 ylabs = {'Intensity (a.u.)','TauPhase (ns)','TauModulation (ns)'};
 for i = 1:numel(metrics)
     ax = subplot(1,3,i,'Parent',fFig); hold(ax,'on'); box(ax,'off');
-    m = stats.(metrics{i}).Mean;
-    s = stats.(metrics{i}).SEM;
+    mRaw = stats.(metrics{i}).Mean;
+    sRaw = stats.(metrics{i}).SEM;
+    % Smooth only for visualization; CSV retains the raw bin statistics.
+    m = smoothForPlot(mRaw, smoothSpan);
+    s = smoothForPlot(sRaw, smoothSpan);
     fill(ax, [binCenters fliplr(binCenters)], [m-s; flipud(m+s)].', ...
         [0 0 0], 'FaceAlpha',0.15, 'EdgeColor','none');
     plot(ax, binCenters, m, 'k-', 'LineWidth',2);
@@ -153,6 +157,27 @@ function [baseXY, tipXY] = getAxisFromClicks(x, y, sampleName)
     baseXY = [xClick(1), yClick(1)]; % crypt
     tipXY  = [xClick(2), yClick(2)]; % villus
     close(fScatter);
+end
+
+function y = smoothForPlot(x, span)
+%SMOOTHFORPLOT Light smoothing helper for plotting jagged curves.
+%   Uses LOWESS via SMOOTHDATA when available; falls back to a moving mean.
+    if nargin < 2 || isempty(span)
+        span = 0.12;
+    end
+    y = x;
+    if isempty(x) || all(isnan(x))
+        return;
+    end
+    win = max(1, round(span * numel(x)));
+    if win < 2
+        return;
+    end
+    try
+        y = smoothdata(x, 'lowess', win, 'omitnan');
+    catch
+        y = movmean(x, win, 'omitnan');
+    end
 end
 
 end
