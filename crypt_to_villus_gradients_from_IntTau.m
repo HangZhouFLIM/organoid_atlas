@@ -29,7 +29,7 @@ if ischar(files)
 end
 fileList = fullfile(pth, files);
 
-%% --------------------- LOAD & CONCATENATE ---------------------
+%% --------------------- LOAD, VALIDATE, AND GET AXIS PER FILE ---------------------
 requiredVars = {'Int','TauPhase','TauModulation','Xcoord','Ycoord'};
 allRows = table();
 for k = 1:numel(fileList)
@@ -38,7 +38,19 @@ for k = 1:numel(fileList)
     assert(all(ismember(requiredVars, T.Properties.VariableNames)), ...
         'File %s must contain columns: %s', fpath, strjoin(requiredVars, ', '));
     [~,fname,ext] = fileparts(fpath);
-    T.Sample = repmat(string([fname ext]), height(T), 1);
+    sampleName = string([fname ext]);
+
+    % Ask the user to pick crypt (first click) and villus (second click) for this sample.
+    [baseXY, tipXY] = getAxisFromClicks(T.Xcoord, T.Ycoord, sampleName);
+    v = tipXY - baseXY;
+    vlen2 = sum(v.^2);
+    assert(vlen2 > 0, 'Crypt and villus clicks are identical for sample %s.', sampleName);
+
+    pts = [T.Xcoord, T.Ycoord];
+    proj = ((pts - baseXY) * v.') / vlen2; % projection scalar
+    T.Pos01 = min(max(proj,0),1);          % clip to [0,1]
+
+    T.Sample = repmat(sampleName, height(T), 1);
     allRows = [allRows; T]; %#ok<AGROW>
 end
 
@@ -46,36 +58,6 @@ if isempty(allRows)
     disp('No data loaded. Exiting.');
     return;
 end
-
-%% --------------------- AXIS DEFINITION (USER CLICKS) ---------------------
-fScatter = figure('Color','w');
-scatter(allRows.Xcoord, allRows.Ycoord, 8, 'k', 'filled');
-axis equal;
-xlabel('Xcoord'); ylabel('Ycoord');
-title('Click crypt base (first) then villus tip (second)');
-set(gca,'FontName','Arial','FontWeight','bold','LineWidth',2,'TickDir','out');
-try
-    [xClick,yClick] = ginput(2);
-catch
-    close(fScatter);
-    error('Axis selection aborted.');
-end
-if numel(xClick) < 2
-    close(fScatter);
-    error('Two points are required to define the axis.');
-end
-baseXY = [xClick(1), yClick(1)]; % crypt
-tipXY  = [xClick(2), yClick(2)]; % villus
-close(fScatter);
-
-v = tipXY - baseXY;
-vlen2 = sum(v.^2);
-assert(vlen2 > 0, 'Crypt and villus clicks are identical.');
-
-pts = [allRows.Xcoord, allRows.Ycoord];
-proj = ((pts - baseXY) * v.') / vlen2; % projection scalar
-proj01 = min(max(proj,0),1);           % clip to [0,1]
-allRows.Pos01 = proj01;
 
 %% --------------------- BINNING ---------------------
 edges = linspace(0,1,numBins+1);
@@ -147,6 +129,30 @@ function S = computeBinStats(values, binIdx, numBins)
         end
     end
     S = struct('Mean',Mean,'SEM',SEM,'N',N);
+end
+
+function [baseXY, tipXY] = getAxisFromClicks(x, y, sampleName)
+%GETAXISFROMCLICKS Ask the user to click crypt then villus for one sample.
+    fScatter = figure('Color','w');
+    scatter(x, y, 8, 'k', 'filled');
+    axis equal;
+    xlabel('Xcoord'); ylabel('Ycoord');
+    title(sprintf('%s: click crypt base (first) then villus tip (second)', sampleName), ...
+        'Interpreter','none');
+    set(gca,'FontName','Arial','FontWeight','bold','LineWidth',2,'TickDir','out');
+    try
+        [xClick,yClick] = ginput(2);
+    catch
+        close(fScatter);
+        error('Axis selection aborted for sample %s.', sampleName);
+    end
+    if numel(xClick) < 2
+        close(fScatter);
+        error('Two points are required to define the axis for sample %s.', sampleName);
+    end
+    baseXY = [xClick(1), yClick(1)]; % crypt
+    tipXY  = [xClick(2), yClick(2)]; % villus
+    close(fScatter);
 end
 
 end
