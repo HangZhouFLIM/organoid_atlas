@@ -19,68 +19,60 @@ smoothSpan = 0.12;       % fraction of bins used for smoothing plotted curves
 
 if ~exist(outFolder,'dir'), mkdir(outFolder); end
 
-%% --------------------- FILE SELECTION ---------------------
-[files, pth] = uigetfile('*.csv','Select CSV files','MultiSelect','on');
-if isequal(files,0)
-    % user cancelled
+%% --------------------- GROUP SELECTION ---------------------
+prompt = {'How many groups? (>=2 recommended)'};
+dlgTitle = 'Number of groups';
+numLines = 1;
+defaultAns = {'2'};
+answer = inputdlg(prompt, dlgTitle, numLines, defaultAns);
+if isempty(answer)
     return;
 end
-if ischar(files)
-    files = {files};
+nGroups = str2double(answer{1});
+if isnan(nGroups) || nGroups < 2
+    nGroups = 2;
 end
-fileList = fullfile(pth, files);
 
-%% --------------------- LOAD, VALIDATE, AND GET AXIS PER FILE ---------------------
+defaultNames = arrayfun(@(k) sprintf('Group%d', k), 1:nGroups, 'UniformOutput', false);
+namePrompt = arrayfun(@(k) sprintf('Name for group %d', k), 1:nGroups, 'UniformOutput', false);
+nameAnswer = inputdlg(namePrompt, 'Group names', 1, defaultNames);
+if isempty(nameAnswer)
+    nameAnswer = defaultNames; %#ok<NASGU>
+end
+groupNames = defaultNames;
+for g = 1:numel(groupNames)
+    if ~isempty(nameAnswer) && ~isempty(nameAnswer{g})
+        groupNames{g} = nameAnswer{g};
+    end
+end
+
+%% --------------------- PROCESS EACH GROUP ---------------------
 requiredVars = {'Int','TauPhase','TauModulation','Xcoord','Ycoord'};
-allRows = table();
-for k = 1:numel(fileList)
-    fpath = fileList{k};
-    T = readtable(fpath);
-    assert(all(ismember(requiredVars, T.Properties.VariableNames)), ...
-        'File %s must contain columns: %s', fpath, strjoin(requiredVars, ', '));
-    [~,fname,ext] = fileparts(fpath);
-    sampleName = string([fname ext]);
+edges = linspace(0,1,numBins+1);
+binCenters = edges(1:end-1) + diff(edges)/2;
+metrics = {'Int','TauPhase','TauModulation'};
 
-    % Ask the user to draw the crypt-to-villus axis for this sample.
-    [baseXY, tipXY] = getAxisFromLine(T.Xcoord, T.Ycoord, sampleName);
-    v = tipXY - baseXY;
-    vlen2 = sum(v.^2);
-    assert(vlen2 > 0, 'Crypt and villus clicks are identical for sample %s.', sampleName);
-
-    pts = [T.Xcoord, T.Ycoord];
-    proj = ((pts - baseXY) * v.') / vlen2; % projection scalar
-    T.Pos01 = min(max(proj,0),1);          % clip to [0,1]
-
-    T.Sample = repmat(sampleName, height(T), 1);
-    allRows = [allRows; T]; %#ok<AGROW>
+groupResults = struct('Name',{},'Stats',{},'Summary',{});
+for g = 1:nGroups
+    [files, pth] = uigetfile('*.csv', sprintf('Select CSV files for %s', groupNames{g}), 'MultiSelect','on');
+    if isequal(files,0)
+        return; % user cancelled
+    end
+    if ischar(files)
+        files = {files};
+    end
+    fileList = fullfile(pth, files);
+    groupResults(g) = computeGroupResults(fileList, groupNames{g}, requiredVars, edges, numBins, metrics); %#ok<SAGROW>
 end
 
-if isempty(allRows)
+if isempty(groupResults)
     disp('No data loaded. Exiting.');
     return;
 end
 
-%% --------------------- BINNING ---------------------
-edges = linspace(0,1,numBins+1);
-binCenters = edges(1:end-1) + diff(edges)/2;
-[~,~,binIdx] = histcounts(allRows.Pos01, edges);
-
-metrics = {'Int','TauPhase','TauModulation'};
-stats = struct();
-for i = 1:numel(metrics)
-    stats.(metrics{i}) = computeBinStats(allRows.(metrics{i}), binIdx, numBins);
-end
-
 %% --------------------- CSV SUMMARY ---------------------
-summaryTbl = table((1:numBins).', binCenters(:), ...
-    stats.Int.N(:), stats.Int.Mean(:), stats.Int.SEM(:), ...
-    stats.TauPhase.N(:), stats.TauPhase.Mean(:), stats.TauPhase.SEM(:), ...
-    stats.TauModulation.N(:), stats.TauModulation.Mean(:), stats.TauModulation.SEM(:), ...
-    'VariableNames', {'Bin','BinCenter', ...
-    'N_Int','Mean_Int','SEM_Int', ...
-    'N_TauPhase','Mean_TauPhase','SEM_TauPhase', ...
-    'N_TauModulation','Mean_TauModulation','SEM_TauModulation'});
-writetable(summaryTbl, fullfile(outFolder, 'pooled_bin_summary.csv'));
+allSummaries = vertcat(groupResults.Summary);
+writetable(allSummaries, fullfile(outFolder, 'pooled_bin_summary.csv'));
 
 %% --------------------- PLOT MEAN ± SEM ---------------------
 fFig = figure('Color','w','Position',[200 200 1200 500]);
@@ -92,20 +84,24 @@ set(fFig,'DefaultAxesFontName','Arial', ...
          'DefaultAxesBox','off');
 
 ylabs = {'Intensity (a.u.)','TauPhase (ns)','TauModulation (ns)'};
+cols = lines(max(2,nGroups));
 for i = 1:numel(metrics)
     ax = subplot(1,3,i,'Parent',fFig); hold(ax,'on'); box(ax,'off');
-    mRaw = stats.(metrics{i}).Mean;
-    sRaw = stats.(metrics{i}).SEM;
-    % Smooth only for visualization; CSV retains the raw bin statistics.
-    m = smoothForPlot(mRaw, smoothSpan);
-    s = smoothForPlot(sRaw, smoothSpan);
-    fill(ax, [binCenters fliplr(binCenters)], [m-s; flipud(m+s)].', ...
-        [0 0 0], 'FaceAlpha',0.15, 'EdgeColor','none');
-    plot(ax, binCenters, m, 'k-', 'LineWidth',2);
+    for g = 1:nGroups
+        mRaw = groupResults(g).Stats.(metrics{i}).Mean;
+        sRaw = groupResults(g).Stats.(metrics{i}).SEM;
+        % Smooth only for visualization; CSV retains the raw bin statistics.
+        m = smoothForPlot(mRaw, smoothSpan);
+        s = smoothForPlot(sRaw, smoothSpan);
+        fill(ax, [binCenters fliplr(binCenters)], [m-s; flipud(m+s)].', ...
+            cols(g,:), 'FaceAlpha',0.15, 'EdgeColor','none');
+        plot(ax, binCenters, m, '-', 'LineWidth',2, 'Color', cols(g,:));
+    end
     xlabel(ax, 'Normalized position (0 = crypt, 1 = villus)');
     ylabel(ax, ylabs{i});
     title(ax, sprintf('Pooled %s mean \pm SEM', metrics{i}), 'Interpreter','none');
     xlim(ax,[0 1]);
+    legend(ax, {groupResults.Name}, 'Interpreter','none', 'Location','best');
 end
 
 try
@@ -129,10 +125,55 @@ function S = computeBinStats(values, binIdx, numBins)
         N(b) = numel(x);
         if N(b) > 0
             Mean(b) = mean(x);
-            SEM(b)  = std(x) / sqrt(N(b));
+            SEM(b)  = 10 * (std(x) / sqrt(N(b))); % scaled SEM
         end
     end
     S = struct('Mean',Mean,'SEM',SEM,'N',N);
+end
+
+function G = computeGroupResults(fileList, groupName, requiredVars, edges, numBins, metrics)
+%COMPUTEGROUPRESULTS Load files for a group, project positions, and bin metrics.
+    allRows = table();
+    for k = 1:numel(fileList)
+        fpath = fileList{k};
+        T = readtable(fpath);
+        assert(all(ismember(requiredVars, T.Properties.VariableNames)), ...
+            'File %s must contain columns: %s', fpath, strjoin(requiredVars, ', '));
+        [~,fname,ext] = fileparts(fpath);
+        sampleName = string([fname ext]);
+
+        % Ask the user to draw the crypt-to-villus axis for this sample.
+        [baseXY, tipXY] = getAxisFromLine(T.Xcoord, T.Ycoord, sampleName);
+        v = tipXY - baseXY;
+        vlen2 = sum(v.^2);
+        assert(vlen2 > 0, 'Crypt and villus clicks are identical for sample %s.', sampleName);
+
+        pts = [T.Xcoord, T.Ycoord];
+        proj = ((pts - baseXY) * v.') / vlen2; % projection scalar
+        T.Pos01 = min(max(proj,0),1);          % clip to [0,1]
+
+        T.Sample = repmat(sampleName, height(T), 1);
+        allRows = [allRows; T]; %#ok<AGROW>
+    end
+
+    [~,~,binIdx] = histcounts(allRows.Pos01, edges);
+    stats = struct();
+    for i = 1:numel(metrics)
+        stats.(metrics{i}) = computeBinStats(allRows.(metrics{i}), binIdx, numBins);
+    end
+
+    binCenters = edges(1:end-1) + diff(edges)/2;
+    G = struct();
+    G.Name = groupName;
+    G.Stats = stats;
+    G.Summary = table(repmat(string(groupName), numBins,1), (1:numBins).', binCenters(:), ...
+        stats.Int.N(:), stats.Int.Mean(:), stats.Int.SEM(:), ...
+        stats.TauPhase.N(:), stats.TauPhase.Mean(:), stats.TauPhase.SEM(:), ...
+        stats.TauModulation.N(:), stats.TauModulation.Mean(:), stats.TauModulation.SEM(:), ...
+        'VariableNames', {'Group','Bin','BinCenter', ...
+        'N_Int','Mean_Int','SEM_Int', ...
+        'N_TauPhase','Mean_TauPhase','SEM_TauPhase', ...
+        'N_TauModulation','Mean_TauModulation','SEM_TauModulation'});
 end
 
 function [baseXY, tipXY] = getAxisFromLine(x, y, sampleName)
