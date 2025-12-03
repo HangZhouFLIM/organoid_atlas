@@ -246,7 +246,7 @@ end
 
 function [baseXY, tipXY] = getAxisFromLine(x, y, groupName)
 %GETAXISFROMLINE Ask the user to draw the crypt-to-villus axis on a scatter plot.
-    fScatter = figure('Color','w');
+    fScatter = figure('Color','w', 'Name', labelStr, 'NumberTitle','off');
     scatter(x, y, 8, 'k', 'filled');
     axis equal;
     xlabel('Xcoord'); ylabel('Ycoord');
