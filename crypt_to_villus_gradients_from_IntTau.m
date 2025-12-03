@@ -28,6 +28,7 @@ smoothSpan     = 0.12;       % fraction of bins used for smoothing plotted curve
 semFillAlpha   = 0.35;       % opacity of SEM shading (higher = more visible)
 semEdgeAlpha   = 0.9;        % opacity of SEM outline to further emphasize SEM
 semEdgeLineWid = 1.2;        % line width of SEM outline
+semDisplayScale= 2.0;        % multiply SEM for plotting (e.g., 2 or 3 for clearer ribbons)
 
 if ~exist(outFolder,'dir'), mkdir(outFolder); end
 
@@ -144,9 +145,10 @@ for i = 1:numel(metrics)
     for g = 1:numel(groupStruct)
         mRaw = groupStruct(g).Stats.(metrics{i}).Mean;
         sRaw = groupStruct(g).Stats.(metrics{i}).SEM;
+        sScaled = sRaw * semDisplayScale; % widen SEM visually without altering saved stats
         % Smooth only for visualization; CSV retains raw bin statistics.
         m = smoothForPlot(mRaw, smoothSpan);
-        s = smoothForPlot(sRaw, smoothSpan);
+        s = smoothForPlot(sScaled, smoothSpan);
         c = colors(g,:);
         fill(ax, [binCenters fliplr(binCenters)], [m-s; flipud(m+s)].', ...
             c, 'FaceAlpha',semFillAlpha, 'EdgeColor',c, ...
