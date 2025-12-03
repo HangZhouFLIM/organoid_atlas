@@ -64,10 +64,6 @@ for g = 1:numel(groupDirs)
         assert(all(ismember(requiredVars, T.Properties.VariableNames)), ...
             'File %s must contain columns: %s', fpath, strjoin(requiredVars, ', '));
 
-        % Show a progress message in the command window so the user knows which
-        % file is being plotted for axis selection.
-        fprintf('Group %s (%d/%d): draw axis for file %s\n', grpName, k, numel(csvList), csvList(k).name);
-
         sampleLabel = sprintf('%s | %s', grpName, csvList(k).name);
         [baseXY, tipXY] = getAxisFromLine(T.Xcoord, T.Ycoord, sampleLabel);
         v = tipXY - baseXY;
@@ -248,13 +244,13 @@ function S = computeBinStats(values, binIdx, numBins)
     S = struct('Mean',Mean,'SEM',SEM,'N',N);
 end
 
-function [baseXY, tipXY] = getAxisFromLine(x, y, labelStr)
+function [baseXY, tipXY] = getAxisFromLine(x, y, groupName)
 %GETAXISFROMLINE Ask the user to draw the crypt-to-villus axis on a scatter plot.
     fScatter = figure('Color','w', 'Name', labelStr, 'NumberTitle','off');
     scatter(x, y, 8, 'k', 'filled');
     axis equal;
     xlabel('Xcoord'); ylabel('Ycoord');
-    title(sprintf('%s: draw axis (crypt base to villus tip)', labelStr), ...
+    title(sprintf('%s: draw axis (crypt base to villus tip)', groupName), ...
         'Interpreter','none');
     set(gca,'FontName','Arial','FontWeight','bold','LineWidth',2,'TickDir','out');
 
@@ -270,11 +266,11 @@ function [baseXY, tipXY] = getAxisFromLine(x, y, labelStr)
             [xClick,yClick] = ginput(2);
         catch
             close(fScatter);
-            error('Axis selection aborted for %s.', labelStr);
+            error('Axis selection aborted for group %s.', groupName);
         end
         if numel(xClick) < 2
             close(fScatter);
-            error('Two points are required to define the axis for %s.', labelStr);
+            error('Two points are required to define the axis for group %s.', groupName);
         end
         pos = [xClick(:), yClick(:)];
     end
