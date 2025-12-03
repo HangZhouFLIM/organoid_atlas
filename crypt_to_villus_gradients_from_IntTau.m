@@ -22,9 +22,12 @@ function crypt_to_villus_gradients_from_IntTau
 %   This function relies only on base MATLAB (R2021b+).
 
 %% --------------------- USER SETTINGS ---------------------
-numBins    = 50;         % number of bins between crypt (0) and villus (1)
-outFolder  = './output_IntTau';
-smoothSpan = 0.12;       % fraction of bins used for smoothing plotted curves
+numBins        = 50;         % number of bins between crypt (0) and villus (1)
+outFolder      = './output_IntTau';
+smoothSpan     = 0.12;       % fraction of bins used for smoothing plotted curves
+semFillAlpha   = 0.35;       % opacity of SEM shading (higher = more visible)
+semEdgeAlpha   = 0.9;        % opacity of SEM outline to further emphasize SEM
+semEdgeLineWid = 1.2;        % line width of SEM outline
 
 if ~exist(outFolder,'dir'), mkdir(outFolder); end
 
@@ -146,7 +149,8 @@ for i = 1:numel(metrics)
         s = smoothForPlot(sRaw, smoothSpan);
         c = colors(g,:);
         fill(ax, [binCenters fliplr(binCenters)], [m-s; flipud(m+s)].', ...
-            c, 'FaceAlpha',0.15, 'EdgeColor','none');
+            c, 'FaceAlpha',semFillAlpha, 'EdgeColor',c, ...
+            'EdgeAlpha',semEdgeAlpha, 'LineWidth', semEdgeLineWid);
         plot(ax, binCenters, m, 'Color', c, 'LineWidth', 2, 'DisplayName', groupStruct(g).Name);
     end
     xlabel(ax, 'Normalized position (0 = crypt, 1 = villus)');
@@ -246,6 +250,7 @@ end
 
 function [baseXY, tipXY] = getAxisFromLine(x, y, groupName)
 %GETAXISFROMLINE Ask the user to draw the crypt-to-villus axis on a scatter plot.
+    labelStr = sprintf('Axis selection: %s', groupName);
     fScatter = figure('Color','w', 'Name', labelStr, 'NumberTitle','off');
     scatter(x, y, 8, 'k', 'filled');
     axis equal;
