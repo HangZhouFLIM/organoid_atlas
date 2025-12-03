@@ -2,11 +2,20 @@ function crypt_to_villus_gradients_from_IntTau
 %CRYPT_TO_VILLUS_GRADIENTS_FROM_INTTAU Analyze crypt->villus gradients for Int/TauPhase/TauModulation across groups.
 %   Each "group" corresponds to a folder containing CSV files (one row per cell)
 %   with required columns: Int, TauPhase, TauModulation, Xcoord, Ycoord.
-%   For every group, the user defines a crypt-to-villus axis on a scatter plot
-%   (first click = crypt base, second click = villus tip). The function projects
-%   all cells in that group onto the axis, bins normalized positions, computes
-%   per-group mean ± SEM for each metric, and overlays all groups on a combined
-%   Prism-like figure. Group names are taken from folder names.
+%
+%   Workflow overview (copy/paste friendly):
+%     1) When prompted, select one or more folders. Each folder = one group.
+%        If you pick a parent folder without CSVs, each CSV-containing subfolder
+%        under it becomes a group automatically.
+%     2) For every CSV file, a scatter plot opens so you can click crypt base
+%        first and villus tip second. Each file keeps its own axis to avoid
+%        merged scatter plots.
+%     3) Cells are projected to their file-specific axis, normalized to [0,1],
+%        binned, and mean ± SEM are computed per bin for Int, TauPhase, and
+%        TauModulation.
+%     4) A combined Prism-like figure overlays mean ± SEM curves for all groups
+%        per metric, with group names taken from folder names.
+%     5) Grouped bin statistics are written to ./output_IntTau/grouped_bin_summary.csv.
 %
 %   Output directory: ./output_IntTau/
 %
@@ -46,11 +55,25 @@ for g = 1:numel(groupDirs)
     end
 
     grpTable = table();
+    % Load each file separately so axis selection happens per file rather than
+    % on merged scatter plots. Each file's cells are projected using its own
+    % user-drawn axis, then concatenated into the group table.
     for k = 1:numel(csvList)
         fpath = fullfile(grpDir, csvList(k).name);
         T = readtable(fpath);
         assert(all(ismember(requiredVars, T.Properties.VariableNames)), ...
             'File %s must contain columns: %s', fpath, strjoin(requiredVars, ', '));
+
+        sampleLabel = sprintf('%s | %s', grpName, csvList(k).name);
+        [baseXY, tipXY] = getAxisFromLine(T.Xcoord, T.Ycoord, sampleLabel);
+        v = tipXY - baseXY;
+        vlen2 = sum(v.^2);
+        assert(vlen2 > 0, 'Crypt and villus clicks are identical for file %s.', sampleLabel);
+
+        pts = [T.Xcoord, T.Ycoord];
+        proj = ((pts - baseXY) * v.') / vlen2;
+        T.Pos01 = min(max(proj,0),1);
+
         T.SourceFile = repmat(string(csvList(k).name), height(T), 1);
         T.Group = repmat(string(grpName), height(T), 1);
         grpTable = [grpTable; T]; %#ok<AGROW>
@@ -60,17 +83,6 @@ for g = 1:numel(groupDirs)
         warning('No data loaded for group %s. Skipping.', grpName);
         continue;
     end
-
-    % Axis definition per group (same logic as original single-group code).
-    [baseXY, tipXY] = getAxisFromLine(grpTable.Xcoord, grpTable.Ycoord, grpName);
-    v = tipXY - baseXY;
-    vlen2 = sum(v.^2);
-    assert(vlen2 > 0, 'Crypt and villus clicks are identical for group %s.', grpName);
-
-    % Project and clip to [0,1].
-    pts = [grpTable.Xcoord, grpTable.Ycoord];
-    proj = ((pts - baseXY) * v.') / vlen2;
-    grpTable.Pos01 = min(max(proj,0),1);
 
     groupStruct(end+1).Name = grpName; %#ok<AGROW>
     groupStruct(end).Table = grpTable;
