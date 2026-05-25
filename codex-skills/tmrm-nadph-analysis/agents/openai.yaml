@@ -1,0 +1,4 @@
+interface:
+  display_name: "TMRM NADPH Analysis"
+  short_description: "Analyze TMRM/NADPH FLIM regions"
+  default_prompt: "Use $tmrm-nadph-analysis to run raw TMRM/NADPH FLIM region analysis."

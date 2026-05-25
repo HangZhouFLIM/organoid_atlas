@@ -1,0 +1,4 @@
+interface:
+  display_name: "TMRM LGR5 NADPH Analysis"
+  short_description: "QC-first tri-channel FLIM analysis"
+  default_prompt: "Use $tmrm-lgr5-nadph-analysis to analyze tri-channel LGR5-GFP/TMRM/NADPH FLIM exports with QC-first grouping decisions."

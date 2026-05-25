@@ -1,0 +1,4 @@
+interface:
+  display_name: "NADPH Phasor Trajectory"
+  short_description: "Plot NADPH G/S phasor shifts."
+  default_prompt: "Create a NADPH phasor shift trajectory figure for this TMRM/NADPH analysis folder."

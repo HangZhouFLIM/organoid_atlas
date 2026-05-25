@@ -1,0 +1,4 @@
+interface:
+  display_name: "Binary Mask Stack"
+  short_description: "Batch binarize masks and save TIFF stacks"
+  default_prompt: "Use $binary-mask-stack to convert mask PNGs in this project into binary masks and ordered TIFF stacks."

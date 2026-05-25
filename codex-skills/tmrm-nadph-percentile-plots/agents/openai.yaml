@@ -1,0 +1,4 @@
+interface:
+  display_name: "TMRM NADPH Percentile Plots"
+  short_description: "Plot percentile-p75 TMRM/NAD(P)H data."
+  default_prompt: "Generate percentile-p75 TMRM/NAD(P)H delta and paired high/low figures from a folder containing the combined analysis CSV files."
